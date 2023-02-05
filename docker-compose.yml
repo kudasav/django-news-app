@@ -1,0 +1,58 @@
+version: '3.7'
+services:
+    news_app:
+        container_name: news_app
+        build: .
+        command: bash -c "python manage.py makemigrations && python manage.py migrate && gunicorn --log-level critical --error-logfile error.log --workers=3 backend.wsgi --bind 0.0.0.0:8800"
+        volumes:
+            - .:/app
+        environment: 
+            - VIRTUAL_HOST=${VIRTUAL_HOST}
+            - VIRTUAL_PORT=8800
+            - LETSENCRYPT_HOST=${VIRTUAL_HOST}
+            - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
+        ports:
+            - 8800:8800
+        networks:
+            proxy:
+
+    nginx-proxy:
+        restart: unless-stopped
+        container_name: proxy
+        image: jwilder/nginx-proxy:latest
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - certs:/etc/nginx/certs:ro
+            - vhostd:/etc/nginx/vhost.d
+            - html:/usr/share/nginx/html
+            - /var/run/docker.sock:/tmp/docker.sock:ro
+            - ./config.conf:/etc/nginx/conf.d/config.conf:ro
+        networks:
+            proxy:
+
+    letsencrypt:
+        image: jrcs/letsencrypt-nginx-proxy-companion
+        container_name: letsencrypt
+        depends_on:
+            - nginx-proxy
+        volumes:
+            - certs:/etc/nginx/certs
+            - vhostd:/etc/nginx/vhost.d
+            - html:/usr/share/nginx/html
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+        restart: always
+        environment: 
+            - NGINX_PROXY_CONTAINER=proxy
+        networks:
+            proxy:
+
+volumes:
+    certs:
+    vhostd:
+    html:
+
+networks:
+    proxy:
+        name: proxy
